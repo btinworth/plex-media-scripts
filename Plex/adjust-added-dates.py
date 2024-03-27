@@ -114,6 +114,10 @@ for lib in LIB_ARRAY:
             ) as bar:
                 for item in items:
                     try:
+                        # [bt] add names to adjust here
+                        if item.title not in []:
+                            continue
+
                         items_processed += 1
                         added_too_far_apart = False
                         orig_too_far_apart = False
@@ -174,6 +178,7 @@ for lib in LIB_ARRAY:
                                     if added_too_far_apart:
                                         try:
                                             item.addedAt = release_date
+                                            item.editAddedAt(release_date) # [bt] this is needed to actually work
                                             blogger(
                                                 f"Set {sub_item.title} added at to {release_date}",
                                                 "info",
