@@ -160,9 +160,6 @@ for lib in LIB_ARRAY:
                                 added_date = item.addedAt
                                 orig_date = item.originallyAvailableAt
 
-                                # [bt] don't use dates earlier than 1st Jan 2016
-                                release_date = max(release_date, datetime(2016,1,1,0,0,0))
-
                                 if not ADJUST_DATE_EPOCH_ONLY or (ADJUST_DATE_EPOCH_ONLY and is_epoch(orig_date)):
                                     try:
                                         delta = added_date - release_date
@@ -178,8 +175,11 @@ for lib in LIB_ARRAY:
 
                                     if added_too_far_apart:
                                         try:
-                                            item.addedAt = release_date
-                                            item.editAddedAt(release_date) # [bt] this is needed to actually work
+                                            # [bt] don't use dates earlier than 1st Jan 2016
+                                            added_at_date = max(release_date, datetime(2016,1,1,0,0,0))
+
+                                            item.addedAt = added_at_date
+                                            item.editAddedAt(added_at_date, False) # [bt] this is needed to actually work
                                             blogger(f"Set {sub_item.title} added at to {release_date}", 'info', 'a', bar)
                                         except Exception as ex:
                                             plogger(f"Problem processing {item.title}; {ex}", 'info', 'a')
@@ -187,7 +187,7 @@ for lib in LIB_ARRAY:
                                     if orig_too_far_apart:
                                         try:
                                             item.originallyAvailableAt = release_date
-                                            item.editOriginallyAvailable(release_date) # [bt] this is needed to actually work
+                                            item.editOriginallyAvailable(release_date, False) # [bt] this is needed to actually work
                                             blogger(f"Set {sub_item.title} originally available at to {release_date}", 'info', 'a', bar)
                                         except Exception as ex:
                                             plogger(f"Problem processing {item.title}; {ex}", 'info', 'a')
