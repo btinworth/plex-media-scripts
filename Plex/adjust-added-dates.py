@@ -125,7 +125,8 @@ for lib in LIB_ARRAY:
                 for item in items:
                     try:
                         # [bt] add names to adjust here
-                        if item.title not in []:
+                        titles = []
+                        if item.title.casefold() not in (t.casefold() for t in titles):
                             continue
 
                         items_processed += 1
