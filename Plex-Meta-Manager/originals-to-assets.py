@@ -3,7 +3,7 @@
 import os
 import shutil
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from logs import setup_logger, plogger, logger
 
 from alive_progress import alive_bar
@@ -12,8 +12,11 @@ from helpers import (booler, get_all_from_library, get_plex, validate_filename, 
 SCRIPT_NAME = Path(__file__).stem
 
 # 0.0.2 added superchatty logging
+# 0.0.3 guardrail to prevent trying to get the seasonNumber of a show
+# 0.0.4 more chatty logging and bail if the original isn't found
+# 0.0.5 Actually fix TV libraries
 
-VERSION = "0.0.2"
+VERSION = "0.0.5"
 
 env_file_path = Path(".env")
 
@@ -67,6 +70,8 @@ LIBRARY_NAMES = os.getenv("LIBRARY_NAMES")
 
 SUPERCHAT = os.getenv("SUPERCHAT")
 
+ASSET_DIR_LOOKUP = {}
+
 ASSET_DIR = os.getenv("ASSET_DIR")
 if ASSET_DIR is None:
     ASSET_DIR = 'assets'
@@ -111,7 +116,7 @@ if LIBRARY_NAMES == 'ALL_LIBRARIES':
             LIB_ARRAY.append(lib.title.strip())
 
 def get_SE_str(item):
-    superchat(f"entering get_SE_str {item}", 'info', 'a')
+    superchat(f"entering get_SE_str for {item.TYPE} {item.title}", 'info', 'a')
     if item.TYPE == "season":
         ret_val = f"S{str(item.seasonNumber).zfill(2)}"
     elif item.TYPE == "episode":
@@ -132,30 +137,47 @@ def find_original(library_title, the_key):
 
 def target_asset(item):
     target_file = None
+    superchat(f"getting target asset name for {item.TYPE} {item.title}", 'info', 'a')
 
     item_se_str = get_SE_str(item)
     item_season = None
-    if item.TYPE != 'movie':
-        item_season = item.seasonNumber
- 
     asset_name = None
-    try:
-        video_file = item.media[0].parts[0].file
-        asset_name = Path(item.media[0].parts[0].file).parent.stem
-    except:
-        raise FileNotFoundError
 
-    # will only be 'poster'
-    base_name = "poster.jpg"
+    if item.TYPE == 'movie':
+        video_file = item.media[0].parts[0].file
+        superchat(f"Video file: {video_file}", 'info', 'a')
+
+        asset_name = Path(video_file).parent.stem
+        superchat(f"Movie asset name: {asset_name}", 'info', 'a')
+
+    if item.TYPE == 'show':
+        locs = item.locations
+        superchat(f"locations: {locs}", 'info', 'a')
+        target_path = PurePath(locs[0])
+        superchat(f"target_path: {target_path}", 'info', 'a')
+        asset_name = target_path.name
+        superchat(f"Show asset name: {asset_name}", 'info', 'a')
+        ASSET_DIR_LOOKUP[item.ratingKey] = asset_name
+ 
+    if item.TYPE == 'season':
+        item_season = item.seasonNumber
+        superchat(f"item_season: {item_season}", 'info', 'a')
+        asset_name = ASSET_DIR_LOOKUP[item.parentRatingKey]
+        superchat(f"Season asset name: {asset_name}", 'info', 'a')
+
+    if item.TYPE == 'episode':
+        asset_name = ASSET_DIR_LOOKUP[item.grandparentRatingKey]
+        superchat(f"Episode asset name: {asset_name}", 'info', 'a')
+
     if USE_ASSET_FOLDERS:
         # Movie/Show poster      <path_to_assets>/ASSET_NAME/poster.ext
-        target_file = Path(ASSET_PATH, asset_name, base_name)
+        target_file = Path(ASSET_PATH, asset_name, "poster.jpg")
         # Season poster          <path_to_assets>/ASSET_NAME/Season##.ext
         if item.TYPE == "season":
             target_file = Path(ASSET_PATH, asset_name, f"Season{str(item_season).zfill(2)}.jpg")
         # Episode poster         <path_to_assets>/ASSET_NAME/S##E##.ext
         if item.TYPE == "episode":
-            target_file = Path(ASSET_PATH, asset_name, f"{item_se_str}{base_name}")
+            target_file = Path(ASSET_PATH, asset_name, f"{item_se_str}.jpg")
     else:
         # Movie/Show poster      <path_to_assets>/ASSET_NAME.ext
         target_file = Path(ASSET_PATH, f"{asset_name}.jpg")
@@ -164,7 +186,9 @@ def target_asset(item):
             target_file = Path(ASSET_PATH, f"{asset_name}_Season{str(item_season).zfill(2)}.jpg")
         # Episode poster         <path_to_assets>/ASSET_NAME_S##E##.ext
         if item.TYPE == "episode":
-            target_file = Path(ASSET_PATH, f"{asset_name}_{item_se_str}{base_name}")
+            target_file = Path(ASSET_PATH, f"{asset_name}_{item_se_str}.jpg")
+
+    superchat(f"Target file: {target_file}", 'info', 'a')
 
     return target_file
     
@@ -214,24 +238,29 @@ for lib in LIB_ARRAY:
                         try:
                             # get rating key
                             the_key = item.ratingKey
-                            superchat(f"Working with {item.title}: {the_key}", 'info', 'a')
-
+                            superchat(f"{item.title} key: {the_key}", 'info', 'a')
+                            
                             # find image in originals as Path
                             original_file = find_original(the_lib.title, the_key)
-                            superchat(f"original file for {item.title}: {original_file}", 'info', 'a')
+                            superchat(f"{item.title} original file: {original_file}", 'info', 'a')
 
-                            # get asset path as Path
-                            target_file = target_asset(item)
-                            superchat(f"target file for {item.title}: {target_file}", 'info', 'a')
+                            if original_file.exists():
+                                superchat(f"{item.title} original file is here.", 'info', 'a')
 
-                            # create folders on the way to the target
-                            target_file.parent.mkdir(parents=True, exist_ok=True)
-                            superchat(f"created target folders for {item.title}: {target_file}", 'info', 'a')
+                                # get asset path as Path
+                                target_file = target_asset(item)
+                                superchat(f"{item.title} target file: {target_file}", 'info', 'a')
 
-                            # copy original image to asset dir, overwriting whatever's there
-                            shutil.copy(original_file, target_file)
-                            superchat(f"copied: {original_file}", 'info', 'a')
-                            superchat(f"to:     {target_file}", 'info', 'a')
+                                # create folders on the way to the target
+                                target_file.parent.mkdir(parents=True, exist_ok=True)
+                                superchat(f"Created folders for: {target_file}", 'info', 'a')
+
+                                # copy original image to asset dir, overwriting whatever's there
+                                shutil.copy(original_file, target_file)
+                                superchat(f"copied {original_file}", 'info', 'a')
+                                superchat(f"    to {target_file}", 'info', 'a')
+                            else:
+                                plogger(f"{item.title} ORIGINAL NOT FOUND: {original_file}", 'info', 'a')
 
                             item_count += 1
                         except Exception as ex:
